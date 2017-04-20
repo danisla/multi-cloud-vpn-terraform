@@ -1,54 +1,110 @@
-# Multi-cloud VPN between AWS and GCP
+# Multi-cloud VPN with AWS and GCP
 
-Reference: https://cloud.google.com/files/CloudVPNGuide-UsingCloudVPNwithAmazonWebServices.pdf
+Terraform templates to establish VPN connection between AWS and GCP.
 
-## AWS Config
+## Setup
+
+Export your AWS credentials:
 
 ```
 export AWS_ACCESS_KEY_ID=YOUR_AWS_KEY_ID
 export AWS_SECRET_ACCESS_KEY=YOUR_AWS_SECRET_KEY
 ```
 
-
-## GCP Config
+Export your google credentials per [terraform docs](https://www.terraform.io/docs/providers/google/index.html#authentication-json-file):
 
 ```
 export GOOGLE_PROJECT=$(gcloud config get-value project)
 export GOOGLE_CREDENTIALS=$(cat ~/.config/gcloud/${USER}-*.json)
 ```
 
+## Compile terraform with google cloud router resource support
+
+Until [PR 12411](https://github.com/hashicorp/terraform/pull/12411) is merged, you must merge and compile terraform locally.
+
+First install go 1.8+ per the [install docs](http://www.golang.org/)
+
+Setup your dev dir and `GOPATH`:
+
+```
+mkdir ~/work
+export GOPATH=${HOME}/work
+```
+
+Clone the terraform repo:
+
+```
+git clone https://github.com/hashicorp/terraform.git "$GOPATH/src/github.com/hashicorp/terraform"
+```
+
+Merge PR 12411:
+
+```
+cd "$GOPATH/src/github.com/hashicorp/terraform"
+git remote add drebes https://github.com/drebes/terraform
+git fetch drebes cloud_router
+git merge drebes/cloud_router
+```
+
+Compile and install dev version of terraform:
+
+```
+make dev
+```
+
+Export terraform into `PATH`:
+
+```
+export PATH=${GOPATH}/bin:${PATH}
+```
+
 ## Run Terraform
+
+There are a few parameters in the AWS Customer Configuration that cannot be extracted from the terraform attributes, a makefile automates the extraction of these fields and mananges a terraform.tfvars file.
+
+First, add your `EC2_SSH_PUB_KEY` to the `terraform.tfvars` file so that you can ssh into the EC2 instance later:
 
 ```
 echo "EC2_SSH_PUB_KEY = \"$(cat ~/.ssh/google_compute_engine.pub)\"" >> terraform.tfvars
 ```
 
-```
-terraform apply
-```
-
-
-### Extract VPN Info from Customer Configuration
+Now, run the make target to provision the infrastructure:
 
 ```
-export VPN_CONFIG=$(jq -r '.modules[].resources["aws_vpn_connection.aws-vpn-connection1"].primary.attributes.customer_gateway_configuration' terraform.tfstate)
-
-# OR
-
-#export AWS_ACCESS_KEY_ID=
-#export AWS_SECRET_ACCESS_KEY=
-#export AWS_DEFAULT_REGION=us-west-2
-#export VPN_CONFIG=$(aws ec2 describe-vpn-connections | jq -r '.VpnConnections[].CustomerGatewayConfiguration')
-
-export TUN1_VPN_OUTSIDE_IP=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[1]/vpn_gateway/tunnel_outside_address/ip_address/text()" -)
-export TUN1_SHARED_KEY=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[1]/ike/pre_shared_key/text()" -)
-export TUN1_PEER_ASN=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[1]/vpn_gateway/bgp/asn/text()" -)
-export TUN1_CUSTOMER_GW_INSIDE_IP=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[1]/customer_gateway/tunnel_inside_address/ip_address/text()" -)
-export TUN1_VPN_GW_INSIDE_IP=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[1]/vpn_gateway/tunnel_inside_address/ip_address/text()" -)
-
-export TUN2_VPN_OUTSIDE_IP=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[2]/vpn_gateway/tunnel_outside_address/ip_address/text()" -)
-export TUN2_SHARED_KEY=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[2]/ike/pre_shared_key/text()" -)
-export TUN2_PEER_ASN=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[2]/vpn_gateway/bgp/asn/text()" -)
-export TUN2_CUSTOMER_GW_INSIDE_IP=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[2]/customer_gateway/tunnel_inside_address/ip_address/text()" -)
-export TUN2_VPN_GW_INSIDE_IP=$(echo "$VPN_CONFIG" | xmllint --xpath "//ipsec_tunnel[2]/vpn_gateway/tunnel_inside_address/ip_address/text()" -)
+make
 ```
+
+## SSH Into the Instances
+
+The init scripts for the EC2 and GCE instsances automatically install and run iperf3 in server mode listening on port 80.
+
+Run `terraform output` to see the IP adddresses used below.
+
+Follow the steps below to ssh into either of the instances:
+
+For GCP:
+
+```
+gcloud compute ssh --zone us-central1-a us-central1-iperf
+```
+
+For EC2:
+
+```
+ssh -i ~/.ssh/google_compute_engine ubuntu@ec2_instance_public_ip
+```
+
+> Replace `ec2_instance_public_ip` with public IP of your ec2 instance.
+
+## Run iperf3
+
+```
+export TARGET=IP_OF_OTHER_INSTANCE
+sudo iperf3 -c $TARGET -i 1 -t 60 -V -p 80
+```
+
+> Replace IP_OF_OTHER_INSTANCE with the internal IP of the instance you are targeting.
+
+## References
+
+- [Using Cloud VPN With Amazon Web Services Guide](https://cloud.google.com/files/CloudVPNGuide-UsingCloudVPNwithAmazonWebServices.pdf)
