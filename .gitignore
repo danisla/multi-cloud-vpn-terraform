@@ -1,0 +1,3 @@
+.customer_config.xml
+terraform.tfvars
+terraform.tfstate*
