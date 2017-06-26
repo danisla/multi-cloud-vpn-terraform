@@ -18,46 +18,6 @@ export GOOGLE_PROJECT=$(gcloud config get-value project)
 export GOOGLE_CREDENTIALS=$(cat ~/.config/gcloud/${USER}-*.json)
 ```
 
-## Compile terraform with google cloud router resource support
-
-Until [PR 12411](https://github.com/hashicorp/terraform/pull/12411) is merged, you must merge and compile terraform locally.
-
-First install go 1.8+ per the [install docs](http://www.golang.org/)
-
-Setup your dev dir and `GOPATH`:
-
-```
-mkdir ~/work
-export GOPATH=${HOME}/work
-```
-
-Clone the terraform repo:
-
-```
-git clone https://github.com/hashicorp/terraform.git "$GOPATH/src/github.com/hashicorp/terraform"
-```
-
-Merge PR 12411:
-
-```
-cd "$GOPATH/src/github.com/hashicorp/terraform"
-git remote add drebes https://github.com/drebes/terraform
-git fetch drebes cloud_router
-git merge drebes/cloud_router
-```
-
-Compile and install dev version of terraform:
-
-```
-make dev
-```
-
-Export terraform into `PATH`:
-
-```
-export PATH=${GOPATH}/bin:${PATH}
-```
-
 ## Run Terraform
 
 There are a few parameters in the AWS Customer Configuration that cannot be extracted from the terraform attributes, a makefile automates the extraction of these fields and mananges a terraform.tfvars file.
